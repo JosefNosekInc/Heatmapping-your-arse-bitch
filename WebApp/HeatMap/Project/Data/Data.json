@@ -1,0 +1,6 @@
+[
+    {"x": 150, "y": 100, "temperature": 22.5, "humidity": 60},
+    {"x": 300, "y": 200, "temperature": 25.1, "humidity": 65},
+    {"x": 450, "y": 300, "temperature": 20.8, "humidity": 55},
+    {"x": 500, "y": 400, "temperature": 23.0, "humidity": 70}
+]
