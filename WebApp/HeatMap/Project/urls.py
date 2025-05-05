@@ -1,5 +1,10 @@
 from django.urls import path
 from .views import heatmap_dashboard, get_sensor_data
+from django.contrib import admin
+from django.urls import path, include
+from django.urls import path
+from . import views
+
 
 urlpatterns = [
     # Route to render the heatmap dashboard

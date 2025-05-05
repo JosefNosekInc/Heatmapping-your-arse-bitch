@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Heatmap Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        #heatmap {
+            width: 100%;
+            height: 500px;
+            background-color: #f1f1f1;
+            border: 2px dashed #ccc;
+            position: relative;
+            overflow: hidden;
+            border-radius: 10px;
+        }
+
+        .heat-point {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.8;
+        }
+
+        /* Heatmap effect using background radial gradient */
+        .heat-point.temperature {
+            background: radial-gradient(circle, rgba(255,0,0,0.8) 0%, rgba(255,0,0,0) 70%);
+        }
+
+        .heat-point.humidity {
+            background: radial-gradient(circle, rgba(0,0,255,0.8) 0%, rgba(0,0,255,0) 70%);
+        }
+
+        /* Styling for the temp and humidity readings on top of each sensor point */
+        .heatmap-label {
+            position: absolute;
+            color: black;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 5px 10px;
+            background-color: white;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            box-shadow: 0px 0px 10px rgba(0,0,0,0.3);
+            white-space: nowrap; /* Prevent text from wrapping */
+            display: flex;
+            gap: 10px; /* Space between temp and humidity boxes */
+            justify-content: center; /* Center the readings inside the box */
+            width: 160px; /* Enough width for both labels side by side */
+        }
+
+        .sensor-reading-box {
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 5px;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 12px; /* Adjust font size */
+        }
+
+        .sensor-reading-box.temperature {
+            text-align: left; /* Left-align temperature */
+        }
+
+        .sensor-reading-box.humidity {
+            text-align: right; /* Right-align humidity */
+        }
+
+        /* Style the export button container */
+        .export-buttons {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .export-buttons button {
+            margin: 0 10px;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="container mt-5">
+    <h1 class="mb-4 text-center">Heatmap Dashboard</h1>
+
+    <!-- Filter Dropdown -->
+    <div class="mb-3 text-center">
+        <label for="filterDropdown" class="form-label fw-bold">Filter by Category:</label>
+        <select class="form-select w-50 mx-auto" id="filterDropdown">
+            <option selected>Choose a filter</option>
+            <option value="temperature">Temperature</option>
+            <option value="humidity">Humidity</option>
+        </select>
+    </div>
+
+    <!-- Heatmap Container -->
+    <div id="heatmap">
+        <!-- Heat points will be generated here -->
+    </div>
+
+    <!-- Export Buttons -->
+    <div class="export-buttons">
+        <button class="btn btn-success" id="downloadBtn">Download Heatmap Image</button>
+        <button class="btn btn-info" id="exportDataBtn">Export Data</button>
+    </div>
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<!-- html2canvas JS (for screenshot/export) -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+<script>
+    const dropdown = document.getElementById('filterDropdown');
+    const heatmapDiv = document.getElementById('heatmap');
+
+    // Fetch sensor data from the backend (Django View)
+    async function fetchSensorData(category = '') {
+        try {
+            const response = await fetch(`/api/sensors/?category=${category}`);
+            const data = await response.json();
+            return data; // Expected format: [{ "x": 100, "y": 200, "category": "temperature", "value": 22.5 }]
+        } catch (error) {
+            console.error('Error fetching sensor data:', error);
+        }
+    }
+
+    // Function to calculate the radius and color based on value (temperature or humidity)
+    function calculateStyle(value, category) {
+        let color, radius;
+
+        // For temperature, color scale from blue to red, smaller values are cooler
+        if (category === 'temperature') {
+            color = `rgba(${Math.min(255, (value * 10))}, 0, 0, 0.8)`;  // Red color gradient
+            radius = Math.max(30, value * 2);  // Larger radius for higher temperatures
+        }
+        // For humidity, color scale from blue to green, higher values are bluer
+        else if (category === 'humidity') {
+            color = `rgba(0, 0, ${Math.min(255, (value * 2))}, 0.8)`;  // Blue to green gradient
+            radius = Math.max(30, value * 2);  // Larger radius for higher humidity
+        }
+
+        return { color, radius };
+    }
+
+    function renderHeatmap(sensorData) {
+        heatmapDiv.innerHTML = ''; // Clear previous points
+
+        sensorData.forEach(sensor => {
+            const { color, radius } = calculateStyle(sensor.value, sensor.category);  // Get color and radius
+
+            const point = document.createElement('div');
+            point.className = `heat-point ${sensor.category}`;
+            point.style.left = `${sensor.x - radius / 2}px`;  // Adjust position so the circle is centered
+            point.style.top = `${sensor.y - radius / 2}px`;  // Adjust position so the circle is centered
+            point.style.width = `${radius}px`;
+            point.style.height = `${radius}px`;
+            point.style.background = color;  // Apply color based on category
+
+            // Create a container for the temperature and humidity readings
+            const readingsContainer = document.createElement('div');
+            readingsContainer.className = 'heatmap-label';
+
+            // If no filter is selected, show both temperature and humidity readings side by side in the same box
+            if (dropdown.value === '' || dropdown.value === 'Choose a filter') {
+                const tempReading = document.createElement('div');
+                tempReading.className = 'sensor-reading-box temperature';
+                tempReading.textContent = `${sensor.category === 'temperature' ? sensor.value.toFixed(2) + '°C' : ''}`;
+
+                const humidityReading = document.createElement('div');
+                humidityReading.className = 'sensor-reading-box humidity';
+                humidityReading.textContent = `${sensor.category === 'humidity' ? sensor.value.toFixed(2) + '%' : ''}`;
+
+                readingsContainer.appendChild(tempReading);
+                readingsContainer.appendChild(humidityReading);
+            } else {
+                // If a filter is selected, show only the selected category
+                const reading = document.createElement('div');
+                reading.className = `sensor-reading-box ${sensor.category}`;
+                reading.textContent = `${sensor.category === 'temperature' ? sensor.value.toFixed(2) + '°C' : sensor.value.toFixed(2) + '%'}`;
+                readingsContainer.appendChild(reading);
+            }
+
+            // Position the label just above the sensor point and ensure spacing for side-by-side positioning
+            readingsContainer.style.left = `${sensor.x - radius / 2 + radius / 4}px`;  // Adjusted position for label
+            readingsContainer.style.top = `${sensor.y - radius / 2 - 35}px`;  // Adjusted position above the circle
+
+            // Append the point and label to the heatmap div
+            heatmapDiv.appendChild(point);
+            heatmapDiv.appendChild(readingsContainer);
+        });
+    }
+
+    // Event listener for filter dropdown change
+    dropdown.addEventListener('change', async () => {
+        const selected = dropdown.value;
+
+        // If "Choose a filter" is selected, show both temperature and humidity
+        const sensorData = selected === 'Choose a filter' ? await fetchSensorData() : await fetchSensorData(selected);
+        renderHeatmap(sensorData); // re-render with filtered data
+    });
+
+    // On load, fetch and render both temperature and humidity
+    window.addEventListener('load', async () => {
+        const sensorData = await fetchSensorData(); // Fetch both temperature and humidity data initially
+        renderHeatmap(sensorData); // render the heatmap with all data initially
+    });
+
+    // Download button logic for heatmap image
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+        html2canvas(heatmapDiv).then(canvas => {
+            const link = document.createElement('a');
+            link.download = 'heatmap.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+    });
+
+    // Export Data to Text File
+    document.getElementById('exportDataBtn').addEventListener('click', () => {
+        const sensorData = [...heatmapDiv.querySelectorAll('.heat-point')].map(point => {
+            const x = parseFloat(point.style.left) + (parseFloat(point.style.width) / 2);
+            const y = parseFloat(point.style.top) + (parseFloat(point.style.height) / 2);
+
+            const reading = point.querySelector('.heatmap-label');
+            const tempReading = reading ? reading.querySelector('.temperature') : null;
+            const humidityReading = reading ? reading.querySelector('.humidity') : null;
+
+            const tempValue = tempReading ? tempReading.textContent : '';
+            const humidityValue = humidityReading ? humidityReading.textContent : '';
+
+            return `Location: (${x.toFixed(2)}, ${y.toFixed(2)}) | Temp: ${tempValue} | Humidity: ${humidityValue}`;
+        });
+
+        const blob = new Blob([sensorData.join('\n')], { type: 'text/plain' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'heatmap_data.txt';
+        link.click();
+    });
+</script>
+
+</body>
+</html>
