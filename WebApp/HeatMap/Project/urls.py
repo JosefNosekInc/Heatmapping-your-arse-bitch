@@ -1,15 +1,7 @@
 from django.urls import path
-from .views import heatmap_dashboard, get_sensor_data
-from django.contrib import admin
-from django.urls import path, include
-from django.urls import path
-from . import views
-
+from . import views  # Safe here because views is NOT importing urls
 
 urlpatterns = [
-    # Route to render the heatmap dashboard
-    path('', heatmap_dashboard, name='heatmap-dashboard'),
-
-    # API endpoint to serve the sensor data
-    path('api/sensors/', get_sensor_data, name='sensor-data'),
+    path('', views.index, name='index'),
+    path('get-sensor-data/', views.get_sensor_data, name='get_sensor_data'),
 ]

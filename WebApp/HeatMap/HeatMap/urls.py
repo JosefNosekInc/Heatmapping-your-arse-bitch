@@ -3,5 +3,7 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('Project.urls')),  # <<<<< Capital P
+    
+    path('', include('Project.urls')),  # Routing to your app
+    
 ]

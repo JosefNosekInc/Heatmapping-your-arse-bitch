@@ -1,9 +1,19 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.conf import settings
+from django.views.decorators.cache import never_cache  # ✅ Needed to disable browser caching
+from .models import SensorData
 import json
 import os
 import logging
+
+print("Project views loaded!")  # Should appear in console
+def index(request):
+    return render(request, 'index.html')  # Ensure index.html is in templates
+
+def get_sensor_data(request):
+    data = SensorData.objects.all().values()
+    return JsonResponse(list(data), safe=False)
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -19,7 +29,6 @@ FALLBACK_SENSOR_DATA = [
 # Load sensor data from JSON file
 def load_sensor_data():
     file_path = os.path.join(settings.BASE_DIR, 'Project', 'Data', 'Data.json')
-    
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -34,9 +43,10 @@ def load_sensor_data():
 
 # View to render the heatmap dashboard page
 def heatmap_dashboard(request):
-    return render(request, 'index.html')  # Make sure your template is under the correct templates directory
+    return render(request, 'index.html')
 
-# View to serve sensor data as JSON
+# View to serve sensor data as JSON (polling target)
+@never_cache  # ✅ Prevent browser from caching the response
 def get_sensor_data(request):
     sensor_data = load_sensor_data()
     category = request.GET.get('category', '').lower()
@@ -53,7 +63,7 @@ def get_sensor_data(request):
         filtered_data = [extract(sensor, category) for sensor in sensor_data if category in sensor]
         return JsonResponse(filtered_data, safe=False)
 
-    # If no category or invalid one, return both types
+    # Return both categories if none specified
     all_data = []
     for sensor in sensor_data:
         if "temperature" in sensor:
