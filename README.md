@@ -1,8 +1,9 @@
-//Knows issues:
+Knows issues: 
 
-Filter doesnt work - Map always shows both Humidity and Temperature instead of filtering them out 
+> [!IMPORTANT]
+> - Filter doesnt work - Map always shows both Humidity and Temperature instead of filtering them out 
+> - Exporting data - Exporting data exports only location of sensors in the field and no Humidity or Temperature readings 
 
-Exporting data - Exporting data exports only location of sensors in the field and no Humidity or Temperature readings 
 
 
 
@@ -63,8 +64,8 @@ Exporting data - Exporting data exports only location of sensors in the field an
 
 
 
+.
+> [!CAUTION]
+>* I will add women 
 
-
-
-I will add women 
-
+.
