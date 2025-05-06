@@ -1,4 +1,4 @@
-Knows issues: 
+Known issues: 
 
 > [!IMPORTANT]
 > - Filter doesnt work - Map always shows both Humidity and Temperature instead of filtering them out 
