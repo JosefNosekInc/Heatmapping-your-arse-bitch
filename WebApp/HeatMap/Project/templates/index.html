@@ -219,7 +219,7 @@
     const sensorData = [...heatmapDiv.querySelectorAll('.heat-point')].map(point => {
       const x = parseFloat(point.style.left) + (parseFloat(point.style.width) / 2);
       const y = parseFloat(point.style.top) + (parseFloat(point.style.height) / 2);
-      return `Location: (${x.toFixed(2)}, ${y.toFixed(2)})`;
+      return `Location: (${x.toFixed(2)}, ${y.toFixed(2)}) | Temp: ${tempValue} | Humidity: ${humidityValue}`;
     });
 
     const blob = new Blob([sensorData.join('\n')], { type: 'text/plain' });
