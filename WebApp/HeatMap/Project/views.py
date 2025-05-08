@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.conf import settings
-from django.views.decorators.cache import never_cache  # ✅ Needed to disable browser caching
+from django.views.decorators.cache import never_cache  # Needed to disable browser caching
 from .models import SensorData
 import json
 import os
