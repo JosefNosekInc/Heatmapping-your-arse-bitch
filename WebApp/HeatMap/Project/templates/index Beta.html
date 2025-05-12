@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Heatmap Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(to bottom right, #f0f4f8, #d9e2ec);
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    #heatmap {
+      width: 100%;
+      height: 500px;
+      background: #ffffff;
+      border: 2px dashed #dee2e6;
+      border-radius: 15px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      transition: box-shadow 0.3s ease;
+    }
+
+    #heatmap:hover {
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    }
+
+    .heat-point {
+      position: absolute;
+      border-radius: 50%;
+      opacity: 0.7;
+      transition: transform 0.2s;
+    }
+
+    .heat-point:hover {
+      transform: scale(1.1);
+    }
+
+    .heat-point.temperature {
+      background: radial-gradient(circle, rgba(255,0,0,0.8) 0%, rgba(255,0,0,0) 70%);
+    }
+
+    .heat-point.humidity {
+      background: radial-gradient(circle, rgba(0,0,255,0.8) 0%, rgba(0,0,255,0) 70%);
+    }
+
+    .heatmap-label {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      white-space: nowrap;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid #ced4da;
+    }
+
+    .sensor-reading-box {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .sensor-reading-box.temperature {
+      color: #dc3545;
+    }
+
+    .sensor-reading-box.humidity {
+      color: #0d6efd;
+    }
+
+    .export-buttons {
+      margin-top: 30px;
+      text-align: center;
+    }
+
+    .export-buttons .btn {
+      margin: 0 10px;
+      padding: 10px 20px;
+      border-radius: 30px;
+    }
+
+    select.form-select {
+      max-width: 300px;
+    }
+
+    h1 {
+      font-weight: 700;
+      color: #343a40;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container py-5">
+  <h1 class="text-center mb-4">Heatmap Dashboard</h1>
+
+  <div class="mb-4 text-center">
+    <label for="filterDropdown" class="form-label fw-semibold">Filter by Category:</label>
+    <select class="form-select mx-auto" id="filterDropdown">
+      <option value="">Show All</option>
+      <option value="temperature">Temperature</option>
+      <option value="humidity">Humidity</option>
+    </select>
+  </div>
+
+  <div id="heatmap"></div>
+
+  <div class="export-buttons">
+    <button class="btn btn-success" id="downloadBtn">
+      <i class="bi bi-image"></i> Download Heatmap
+    </button>
+    <button class="btn btn-primary" id="exportDataBtn">
+      <i class="bi bi-download"></i> Export Data
+    </button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script>
+  const dropdown = document.getElementById('filterDropdown');
+  const heatmapDiv = document.getElementById('heatmap');
+
+  const dummyData = [
+    { x: 150, y: 100, value: 50.0, category: "temperature" },
+    { x: 150, y: 100, value: 80.0, category: "humidity" },
+    { x: 300, y: 200, value: 60.0, category: "temperature" },
+    { x: 300, y: 200, value: 70.0, category: "humidity" },
+    { x: 100, y: 400, value: 45.0, category: "temperature" }
+  ];
+
+  function calculateStyle(value, category) {
+    let color, radius;
+
+    if (category === 'temperature') {
+      color = `rgba(${Math.min(255, value * 10)}, 0, 0, 0.8)`;
+      radius = Math.max(30, value * 2);
+    } else if (category === 'humidity') {
+      color = `rgba(0, 0, ${Math.min(255, value * 2)}, 0.8)`;
+      radius = Math.max(30, value * 2);
+    }
+
+    return { color, radius };
+  }
+
+  function renderHeatmap(sensorData) {
+    heatmapDiv.innerHTML = '';
+    const offsetMap = {};
+
+    sensorData.forEach(sensor => {
+      const { color, radius } = calculateStyle(sensor.value, sensor.category);
+      const point = document.createElement('div');
+      point.className = `heat-point ${sensor.category}`;
+      point.style.left = `${sensor.x - radius / 2}px`;
+      point.style.top = `${sensor.y - radius / 2}px`;
+      point.style.width = `${radius}px`;
+      point.style.height = `${radius}px`;
+      point.style.background = color;
+
+      const readingsContainer = document.createElement('div');
+      readingsContainer.className = 'heatmap-label';
+      const reading = document.createElement('div');
+      reading.className = `sensor-reading-box ${sensor.category}`;
+      reading.textContent = sensor.category === 'temperature'
+        ? `${sensor.value.toFixed(2)}°C`
+        : `${sensor.value.toFixed(2)}%`;
+      readingsContainer.appendChild(reading);
+
+      const key = `${sensor.x},${sensor.y}`;
+      const offsetIndex = offsetMap[key] || 0;
+      offsetMap[key] = offsetIndex + 1;
+
+      readingsContainer.style.left = `${sensor.x + offsetIndex * 80}px`;
+      readingsContainer.style.top = `${sensor.y - 35}px`;
+
+      heatmapDiv.appendChild(point);
+      heatmapDiv.appendChild(readingsContainer);
+    });
+  }
+
+  function fetchSensorDataFiltered(category = '') {
+    return dummyData.filter(d => category === '' || d.category === category);
+  }
+
+  dropdown.addEventListener('change', () => {
+    const selected = dropdown.value;
+    const data = fetchSensorDataFiltered(selected);
+    renderHeatmap(data);
+  });
+
+  window.addEventListener('load', () => {
+    const data = fetchSensorDataFiltered();
+    renderHeatmap(data);
+  });
+
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    html2canvas(heatmapDiv).then(canvas => {
+      const link = document.createElement('a');
+      link.download = 'heatmap.png';
+      link.href = canvas.toDataURL();
+      link.click();
+    });
+  });
+
+  document.getElementById('exportDataBtn').addEventListener('click', () => {
+    const exportText = dummyData.map(d => {
+      const label = `Location: (${d.x.toFixed(2)}, ${d.y.toFixed(2)})`;
+      const temp = d.category === 'temperature' ? ` | Temp: ${d.value}` : '';
+      const hum = d.category === 'humidity' ? ` | Humidity: ${d.value}` : '';
+      return label + temp + hum;
+    }).join('\n');
+
+    const blob = new Blob([exportText], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'heatmap_data.txt';
+    link.click();
+  });
+</script>
+</body>
+</html>
