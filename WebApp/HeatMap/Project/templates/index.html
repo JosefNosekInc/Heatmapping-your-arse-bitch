@@ -152,8 +152,11 @@
     return { color, radius };
   }
 
+  // [FIX START] Avoid overlapping labels
   function renderHeatmap(sensorData) {
     heatmapDiv.innerHTML = '';
+
+    let offsetMap = {}; // Map to track label counts at each location
 
     sensorData.forEach(sensor => {
       const { color, radius } = calculateStyle(sensor.value, sensor.category);
@@ -176,13 +179,19 @@
         : `${sensor.value.toFixed(2)}%`;
 
       readingsContainer.appendChild(reading);
-      readingsContainer.style.left = `${sensor.x}px`;
+
+      const key = `${sensor.x},${sensor.y}`;
+      const offsetIndex = offsetMap[key] || 0;
+      offsetMap[key] = offsetIndex + 1;
+
+      readingsContainer.style.left = `${sensor.x + offsetIndex * 80}px`; // Offset by 80px per label
       readingsContainer.style.top = `${sensor.y - 35}px`;
 
       heatmapDiv.appendChild(point);
       heatmapDiv.appendChild(readingsContainer);
     });
   }
+  // [FIX END]
 
   async function fetchSensorDataFiltered(category = '') {
     try {
@@ -219,7 +228,7 @@
     const sensorData = [...heatmapDiv.querySelectorAll('.heat-point')].map(point => {
       const x = parseFloat(point.style.left) + (parseFloat(point.style.width) / 2);
       const y = parseFloat(point.style.top) + (parseFloat(point.style.height) / 2);
-      return `Location: (${x.toFixed(2)}, ${y.toFixed(2)}) | Temp: ${tempValue} | Humidity: ${humidityValue}`;
+      return `Location: (${x.toFixed(2)}, ${y.toFixed(2)})`;
     });
 
     const blob = new Blob([sensorData.join('\n')], { type: 'text/plain' });
