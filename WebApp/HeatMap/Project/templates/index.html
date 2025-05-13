@@ -117,7 +117,7 @@
       <i class="bi bi-image"></i> Download Heatmap
     </button>
     <button class="btn btn-primary" id="exportDataBtn">
-      <i class="bi bi-download"></i> Export Data
+      <i class="bi bi-download"></i> Export Current Data
     </button>
   </div>
 </div>
@@ -127,16 +127,6 @@
 <script>
   const dropdown = document.getElementById('filterDropdown');
   const heatmapDiv = document.getElementById('heatmap');
-
-  function fetchSensorData() {
-    fetch('/get-sensor-data/')
-      .then(response => response.json())
-      .then(data => renderHeatmap(data))
-      .catch(error => console.error('Error fetching data:', error));
-  }
-
-  setInterval(fetchSensorData, 1000);
-  fetchSensorData();
 
   function calculateStyle(value, category) {
     let color, radius;
@@ -152,11 +142,8 @@
     return { color, radius };
   }
 
-  // [FIX START] Avoid overlapping labels
   function renderHeatmap(sensorData) {
     heatmapDiv.innerHTML = '';
-
-    let offsetMap = {}; // Map to track label counts at each location
 
     sensorData.forEach(sensor => {
       const { color, radius } = calculateStyle(sensor.value, sensor.category);
@@ -180,38 +167,32 @@
 
       readingsContainer.appendChild(reading);
 
-      const key = `${sensor.x},${sensor.y}`;
-      const offsetIndex = offsetMap[key] || 0;
-      offsetMap[key] = offsetIndex + 1;
-
-      readingsContainer.style.left = `${sensor.x + offsetIndex * 80}px`; // Offset by 80px per label
+      readingsContainer.style.left = `${sensor.x}px`;
       readingsContainer.style.top = `${sensor.y - 35}px`;
 
       heatmapDiv.appendChild(point);
       heatmapDiv.appendChild(readingsContainer);
     });
   }
-  // [FIX END]
 
-  async function fetchSensorDataFiltered(category = '') {
+  async function fetchSensorData(category = '') {
     try {
       const response = await fetch(`/api/sensors/?category=${category}`);
       return await response.json();
     } catch (error) {
       console.error('Error fetching sensor data:', error);
+      return [];
     }
   }
 
   dropdown.addEventListener('change', async () => {
-    const selected = dropdown.value;
-    const sensorData = selected === 'Choose a filter'
-      ? await fetchSensorDataFiltered()
-      : await fetchSensorDataFiltered(selected);
+    const selected = dropdown.value === 'Choose a filter' ? '' : dropdown.value;
+    const sensorData = await fetchSensorData(selected);
     renderHeatmap(sensorData);
   });
 
   window.addEventListener('load', async () => {
-    const sensorData = await fetchSensorDataFiltered();
+    const sensorData = await fetchSensorData();
     renderHeatmap(sensorData);
   });
 
@@ -224,19 +205,29 @@
     });
   });
 
-  document.getElementById('exportDataBtn').addEventListener('click', () => {
-    const sensorData = [...heatmapDiv.querySelectorAll('.heat-point')].map(point => {
-      const x = parseFloat(point.style.left) + (parseFloat(point.style.width) / 2);
-      const y = parseFloat(point.style.top) + (parseFloat(point.style.height) / 2);
-      return `Location: (${x.toFixed(2)}, ${y.toFixed(2)})`;
-    });
+  document.getElementById('exportDataBtn').addEventListener('click', async () => {
+    try {
+      // Fetch raw data directly
+      const sensorData = await fetchSensorData();
+      // Convert the data to a JSON string
+      const jsonData = JSON.stringify(sensorData, null, 2);
 
-    const blob = new Blob([sensorData.join('\n')], { type: 'text/plain' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'heatmap_data.txt';
-    link.click();
+      // Create a Blob object with the JSON data and create a download link
+      const blob = new Blob([jsonData], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'sensor_data.json'; // File name for the downloaded JSON
+      link.click();
+    } catch (error) {
+      console.error('Error exporting data:', error);
+
+    }
   });
+    // Refresh the page every 5 seconds
+  setInterval(() => {
+    location.reload();
+  }, 5000);  // 5000 milliseconds = 5 seconds
 </script>
+
 </body>
 </html>

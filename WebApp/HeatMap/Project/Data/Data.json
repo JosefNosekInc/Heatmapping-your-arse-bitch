@@ -1,7 +1,7 @@
 [
-    {"x": 150, "y": 100, "temperature": 22.5, "humidity": 70},
-    {"x": 300, "y": 200, "temperature": 25.1, "humidity": 55},
-    {"x": 350, "y": 400, "temperature": 20.8, "humidity": 45},
-    {"x": 800, "y": 340, "temperature": 32.0, "humidity": 90}
+    {"x": 100, "y": 100, "temperature": 22.5, "humidity": 70},
+    {"x": 200, "y": 200, "temperature": 25.1, "humidity": 55},
+    {"x": 400, "y": 400, "temperature": 20.8, "humidity": 45},
+    {"x": 800, "y": 100, "temperature": 32.0, "humidity": 10}
 ]
 

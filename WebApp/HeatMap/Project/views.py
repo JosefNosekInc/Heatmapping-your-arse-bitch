@@ -1,52 +1,32 @@
 from django.shortcuts import render
 from django.http import JsonResponse
-from django.conf import settings
-from django.views.decorators.cache import never_cache  # Needed to disable browser caching
-from .models import SensorData
+from django.views.decorators.cache import never_cache
 import json
 import os
 import logging
 
-print("Project views loaded!")  # Should appear in console
-def index(request):
-    return render(request, 'index.html')  # Ensure index.html is in templates
-
-def get_sensor_data(request):
-    data = SensorData.objects.all().values()
-    return JsonResponse(list(data), safe=False)
-
-# Configure logger
 logger = logging.getLogger(__name__)
 
-# Fallback: Example sensor data for testing/demo
-FALLBACK_SENSOR_DATA = [
-    {"x": 150, "y": 100, "temperature": 22.5, "humidity": 50},
-    {"x": 300, "y": 200, "temperature": 25.1, "humidity": 65},
-    {"x": 450, "y": 300, "temperature": 20.8, "humidity": 65},
-    {"x": 300, "y": 200, "temperature": 23.0, "humidity": 88}
-]
-
-# Load sensor data from JSON file
 def load_sensor_data():
-    file_path = os.path.join(settings.BASE_DIR, 'Project', 'Data', 'Data.json')
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(current_dir, 'Data', 'Data.json')
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            if isinstance(data, list):  # Extra check
+            if isinstance(data, list):
                 return data
             else:
-                logger.warning("JSON data structure invalid. Expected a list.")
+                logger.warning("Expected a list of sensor data in Data.json.")
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.warning(f"Sensor data fallback used due to error: {e}")
-    
-    return FALLBACK_SENSOR_DATA
+        logger.error(f"Failed to load sensor data from JSON: {e}")
+    return []
 
-# View to render the heatmap dashboard page
-def heatmap_dashboard(request):
-    return render(request, 'index.html')
+# View to render index.html (your heatmap dashboard)
+def index(request):
+    return render(request, 'index.html')  # ✅ Points to index.html
 
-# View to serve sensor data as JSON (polling target)
-@never_cache  # ✅ Prevent browser from caching the response
+# API endpoint to return sensor data as JSON
+@never_cache
 def get_sensor_data(request):
     sensor_data = load_sensor_data()
     category = request.GET.get('category', '').lower()
@@ -60,15 +40,15 @@ def get_sensor_data(request):
         }
 
     if category in ["temperature", "humidity"]:
-        filtered_data = [extract(sensor, category) for sensor in sensor_data if category in sensor]
-        return JsonResponse(filtered_data, safe=False)
+        filtered = [extract(s, category) for s in sensor_data if category in s]
+        return JsonResponse(filtered, safe=False)
 
-    # Return both categories if none specified
+    # No filter: return both temperature and humidity
     all_data = []
-    for sensor in sensor_data:
-        if "temperature" in sensor:
-            all_data.append(extract(sensor, "temperature"))
-        if "humidity" in sensor:
-            all_data.append(extract(sensor, "humidity"))
+    for s in sensor_data:
+        if "temperature" in s:
+            all_data.append(extract(s, "temperature"))
+        if "humidity" in s:
+            all_data.append(extract(s, "humidity"))
 
     return JsonResponse(all_data, safe=False)
