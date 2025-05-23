@@ -104,7 +104,7 @@
   <div class="mb-4 text-center">
     <label for="filterDropdown" class="form-label fw-semibold">Filter by Category:</label>
     <select class="form-select mx-auto" id="filterDropdown">
-      <option selected>Choose a filter</option>
+      <option value="">Choose a filter</option>
       <option value="temperature">Temperature</option>
       <option value="humidity">Humidity</option>
     </select>
@@ -127,6 +127,7 @@
 <script>
   const dropdown = document.getElementById('filterDropdown');
   const heatmapDiv = document.getElementById('heatmap');
+  let currentCategory = '';
 
   function calculateStyle(value, category) {
     let color, radius;
@@ -166,7 +167,6 @@
         : `${sensor.value.toFixed(2)}%`;
 
       readingsContainer.appendChild(reading);
-
       readingsContainer.style.left = `${sensor.x}px`;
       readingsContainer.style.top = `${sensor.y - 35}px`;
 
@@ -185,17 +185,30 @@
     }
   }
 
-  dropdown.addEventListener('change', async () => {
-    const selected = dropdown.value === 'Choose a filter' ? '' : dropdown.value;
-    const sensorData = await fetchSensorData(selected);
-    renderHeatmap(sensorData);
-  });
-
+  // Initial load
   window.addEventListener('load', async () => {
-    const sensorData = await fetchSensorData();
-    renderHeatmap(sensorData);
-  });
+  // Restore previous filter from localStorage
+  currentCategory = localStorage.getItem('selectedCategory') || '';
+  dropdown.value = currentCategory || '';
 
+  const sensorData = await fetchSensorData(currentCategory);
+  renderHeatmap(sensorData);
+});
+
+dropdown.addEventListener('change', async () => {
+  currentCategory = dropdown.value;
+  localStorage.setItem('selectedCategory', currentCategory);  // Save selection
+  const sensorData = await fetchSensorData(currentCategory);
+  renderHeatmap(sensorData);
+});
+
+  // Auto-update every 5 seconds without reloading the page
+  setInterval(async () => {
+    const sensorData = await fetchSensorData(currentCategory);
+    renderHeatmap(sensorData);
+  }, 5000);
+
+  // Download heatmap as image
   document.getElementById('downloadBtn').addEventListener('click', () => {
     html2canvas(heatmapDiv).then(canvas => {
       const link = document.createElement('a');
@@ -205,28 +218,20 @@
     });
   });
 
+  // Export current data as JSON
   document.getElementById('exportDataBtn').addEventListener('click', async () => {
     try {
-      // Fetch raw data directly
-      const sensorData = await fetchSensorData();
-      // Convert the data to a JSON string
+      const sensorData = await fetchSensorData(currentCategory);
       const jsonData = JSON.stringify(sensorData, null, 2);
-
-      // Create a Blob object with the JSON data and create a download link
       const blob = new Blob([jsonData], { type: 'application/json' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = 'sensor_data.json'; // File name for the downloaded JSON
+      link.download = 'sensor_data.json';
       link.click();
     } catch (error) {
       console.error('Error exporting data:', error);
-
     }
   });
-    // Refresh the page every 5 seconds
-  setInterval(() => {
-    location.reload();
-  }, 5000);  // 5000 milliseconds = 5 seconds
 </script>
 
 </body>
