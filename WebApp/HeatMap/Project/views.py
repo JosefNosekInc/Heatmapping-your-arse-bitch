@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import csrf_exempt
 import json
 import os
 import logging
@@ -24,6 +25,43 @@ def load_sensor_data():
 # View to render index.html (your heatmap dashboard)
 def index(request):
     return render(request, 'index.html')  # ✅ Points to index.html
+
+@csrf_exempt
+def receive_sensor_data(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            node_id = data.get("node_id")
+            temperature = data.get("temperature")
+            humidity = data.get("humidity")
+
+            # Optionally: Add coordinates or map node ID to location
+            sensor_entry = {
+                "node_id": node_id,
+                "x": node_id * 10,  # Example mapping
+                "y": 0,
+                "temperature": temperature,
+                "humidity": humidity,
+                "timestamp": now().isoformat()
+            }
+
+            file_path = os.path.join(os.path.dirname(__file__), 'Data', 'Data.json')
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f)
+            else:
+                existing_data = []
+
+            existing_data.append(sensor_entry)
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(existing_data, f, indent=2)
+
+            return JsonResponse({"status": "success"}, status=200)
+        except Exception as e:
+            return JsonResponse({"status": "error", "message": str(e)}, status=400)
+
+    return JsonResponse({"status": "only POST allowed"}, status=405)
 
 # API endpoint to return sensor data as JSON
 @never_cache
