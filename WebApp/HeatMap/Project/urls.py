@@ -8,8 +8,7 @@ urlpatterns = [
     path('api/sensor_data/', views.get_sensor_data, name='get_sensor_data'),
     path('api/sensors/', views.get_sensor_data),
     path('api/receive_sensor_data/', views.receive_sensor_data, name='receive_sensor_data'),
-    path('api/ping/', ping_view, name='ping'),  # ✅ Ping route
+    path('api/ping/', ping_view, name='ping'),  
     path('view-data/', view_data_file),
     path('api/data/', views.receive_sensor_data, name='receive_sensor_data'),
-    
 ]
