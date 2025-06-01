@@ -1,92 +1,82 @@
 from django.shortcuts import render
 from django.http import JsonResponse
-from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_GET
+from django.utils.timezone import now
 import json
-import os
 import logging
+import os
+from .models import SensorData
 
 logger = logging.getLogger(__name__)
 
-def load_sensor_data():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(current_dir, 'Data', 'Data.json')
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            if isinstance(data, list):
-                return data
-            else:
-                logger.warning("Expected a list of sensor data in Data.json.")
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error(f"Failed to load sensor data from JSON: {e}")
-    return []
-
-# View to render index.html (your heatmap dashboard)
 def index(request):
-    return render(request, 'index.html')  # ✅ Points to index.html
+    return render(request, 'index.html')
 
 @csrf_exempt
 def receive_sensor_data(request):
-    if request.method == "POST":
+    if request.method == 'POST':
         try:
             data = json.loads(request.body)
             node_id = data.get("node_id")
             temperature = data.get("temperature")
             humidity = data.get("humidity")
 
-            # Optionally: Add coordinates or map node ID to location
-            sensor_entry = {
-                "node_id": node_id,
-                "x": node_id * 10,  # Example mapping
-                "y": 0,
-                "temperature": temperature,
-                "humidity": humidity,
-                "timestamp": now().isoformat()
-            }
+            x = node_id * 10 if node_id else 0
+            y = 0  # You can adjust based on physical layout
 
-            file_path = os.path.join(os.path.dirname(__file__), 'Data', 'Data.json')
-            if os.path.exists(file_path):
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    existing_data = json.load(f)
-            else:
-                existing_data = []
+            SensorData.objects.create(
+                node_id=node_id,
+                temperature=temperature,
+                humidity=humidity,
+                x=x,
+                y=y,
+            )
 
-            existing_data.append(sensor_entry)
-
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(existing_data, f, indent=2)
-
+            logger.info(f"✅ Stored: Node {node_id}, Temp {temperature}, Humidity {humidity}")
             return JsonResponse({"status": "success"}, status=200)
+
         except Exception as e:
+            logger.error(f"❌ Error saving data: {e}", exc_info=True)
             return JsonResponse({"status": "error", "message": str(e)}, status=400)
 
     return JsonResponse({"status": "only POST allowed"}, status=405)
 
-# API endpoint to return sensor data as JSON
 @never_cache
 def get_sensor_data(request):
-    sensor_data = load_sensor_data()
-    category = request.GET.get('category', '').lower()
+    category = request.GET.get("category", "").lower()
+    data = SensorData.objects.all().order_by("-timestamp")
 
     def extract(sensor, cat):
         return {
-            "x": sensor.get("x", 0),
-            "y": sensor.get("y", 0),
+            "x": sensor.x,
+            "y": sensor.y,
             "category": cat,
-            "value": sensor.get(cat)
+            "value": getattr(sensor, cat),
+            "timestamp": sensor.timestamp.isoformat()
         }
 
     if category in ["temperature", "humidity"]:
-        filtered = [extract(s, category) for s in sensor_data if category in s]
+        filtered = [extract(s, category) for s in data]
         return JsonResponse(filtered, safe=False)
 
-    # No filter: return both temperature and humidity
     all_data = []
-    for s in sensor_data:
-        if "temperature" in s:
-            all_data.append(extract(s, "temperature"))
-        if "humidity" in s:
-            all_data.append(extract(s, "humidity"))
+    for s in data:
+        all_data.append(extract(s, "temperature"))
+        all_data.append(extract(s, "humidity"))
 
     return JsonResponse(all_data, safe=False)
+
+@require_GET
+def ping_view(request):
+    return JsonResponse({"status": "ok"})
+
+def view_data_file(request):
+    file_path = os.path.join(os.path.dirname(__file__), 'data.json')
+    if os.path.exists(file_path):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return JsonResponse(data, safe=False)
+    else:
+        return JsonResponse({"status": "no data file found"}, status=404)
