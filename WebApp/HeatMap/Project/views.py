@@ -22,9 +22,12 @@ def receive_sensor_data(request):
             temperature = data.get("temperature")
             humidity = data.get("humidity")
 
-            # Simple X/Y logic based on node_id
-            x = node_id * 10 if node_id else 0
-            y = 0  # Or map with logic
+            positions = {
+                2: (100, 150),
+                3: (200, 300),
+                4: (300, 400),
+            }
+            x, y = positions.get(node_id, (50, 50))
 
             SensorData.objects.create(
                 node_id=node_id,
@@ -81,3 +84,6 @@ def view_data_file(request):
         return JsonResponse(data, safe=False)
     else:
         return JsonResponse({"status": "no data file found"}, status=404)
+    
+def dashboard(request):
+    return render(request, 'dashboard.html')
