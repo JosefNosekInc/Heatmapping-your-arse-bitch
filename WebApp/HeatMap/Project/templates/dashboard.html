@@ -54,14 +54,17 @@
             border-radius: 5px;
             text-align: center;
             font-size: 12px; /* Adjust font size */
+            min-width: 60px;
         }
 
         .sensor-reading-box.temperature {
             text-align: left; /* Left-align temperature */
+            color: #dc3545;
         }
 
         .sensor-reading-box.humidity {
             text-align: right; /* Right-align humidity */
+            color: #0d6efd;
         }
 
         /* Style the export button container */
@@ -84,7 +87,7 @@
     <div class="mb-3 text-center">
         <label for="filterDropdown" class="form-label fw-bold">Filter by Category:</label>
         <select class="form-select w-50 mx-auto" id="filterDropdown">
-            <option selected>Choose a filter</option>
+            <option value="" selected>Choose a filter</option>
             <option value="temperature">Temperature</option>
             <option value="humidity">Humidity</option>
         </select>
@@ -111,99 +114,189 @@
     const dropdown = document.getElementById('filterDropdown');
     const heatmapDiv = document.getElementById('heatmap');
 
-    // Fetch sensor data from the backend (Django View)
+    let currentSensorData = [];  // Global variable to hold current fetched data
+
+    // Fetch sensor data from backend, filter by category if provided
     async function fetchSensorData(category = '') {
         try {
             const response = await fetch(`/api/sensors/?category=${category}`);
             const data = await response.json();
-            return data; // Expected format: [{ "x": 100, "y": 200, "category": "temperature", "value": 22.5 }]
+            currentSensorData = data;  // Save globally
+
+            // Process latest readings per node and category
+            if (category === '') {
+                // Show both temperature and humidity latest per node
+                const latestPerNodeCategory = new Map(); // key: nodeId-category
+
+                data.forEach(sensor => {
+                    const nodeId = sensor.node_id || sensor.id || sensor.sensor_id || '';
+                    const cat = sensor.category;
+                    if (!nodeId || !cat) return;
+
+                    const key = `${nodeId}-${cat}`;
+                    if (!latestPerNodeCategory.has(key) || sensor.timestamp > latestPerNodeCategory.get(key).timestamp) {
+                        latestPerNodeCategory.set(key, sensor);
+                    }
+                });
+
+                // Group by node
+                const combinedByNode = new Map();
+                for (const [key, sensor] of latestPerNodeCategory.entries()) {
+                    const nodeId = key.split('-')[0];
+                    if (!combinedByNode.has(nodeId)) combinedByNode.set(nodeId, {});
+                    combinedByNode.get(nodeId)[sensor.category] = sensor;
+                }
+
+                return [...combinedByNode.values()];
+
+            } else {
+                // Filter applied: only latest per node for that category
+                const latestPerNode = new Map(); // key: nodeId
+
+                data.forEach(sensor => {
+                    const nodeId = sensor.node_id || sensor.id || sensor.sensor_id || '';
+                    if (!nodeId) return;
+
+                    if (!latestPerNode.has(nodeId) || sensor.timestamp > latestPerNode.get(nodeId).timestamp) {
+                        latestPerNode.set(nodeId, sensor);
+                    }
+                });
+
+                return Array.from(latestPerNode.values());
+            }
         } catch (error) {
             console.error('Error fetching sensor data:', error);
+            currentSensorData = [];
+            return [];
         }
     }
 
-    // Function to calculate the radius and color based on value (temperature or humidity)
+    // Calculate circle color and radius based on value and category
     function calculateStyle(value, category) {
         let color, radius;
-
-        // For temperature, color scale from blue to red, smaller values are cooler
         if (category === 'temperature') {
-            color = `rgba(${Math.min(255, (value * 10))}, 0, 0, 0.8)`;  // Red color gradient
-            radius = Math.max(30, value * 2);  // Larger radius for higher temperatures
+            color = `rgba(${Math.min(255, value * 10)}, 0, 0, 0.8)`;
+            radius = Math.max(30, value * 2);
+        } else if (category === 'humidity') {
+            color = `rgba(0, 0, ${Math.min(255, value * 2)}, 0.8)`;
+            radius = Math.max(30, value * 2);
         }
-        // For humidity, color scale from blue to green, higher values are bluer
-        else if (category === 'humidity') {
-            color = `rgba(0, 0, ${Math.min(255, (value * 2))}, 0.8)`;  // Blue to green gradient
-            radius = Math.max(30, value * 2);  // Larger radius for higher humidity
-        }
-
         return { color, radius };
     }
 
+    // Render the heatmap based on sensor data
     function renderHeatmap(sensorData) {
-        heatmapDiv.innerHTML = ''; // Clear previous points
+        heatmapDiv.innerHTML = '';  // Clear previous content
 
-        sensorData.forEach(sensor => {
-            const { color, radius } = calculateStyle(sensor.value, sensor.category);  // Get color and radius
+        const filterCategory = dropdown.value;
 
-            const point = document.createElement('div');
-            point.className = `heat-point ${sensor.category}`;
-            point.style.left = `${sensor.x - radius / 2}px`;  // Adjust position so the circle is centered
-            point.style.top = `${sensor.y - radius / 2}px`;  // Adjust position so the circle is centered
-            point.style.width = `${radius}px`;
-            point.style.height = `${radius}px`;
-            point.style.background = color;  // Apply color based on category
+        if (filterCategory === '') {
+            // Show combined temp and humidity per node side-by-side
+            sensorData.forEach(nodeSensors => {
+                // nodeSensors = { temperature: sensorObj, humidity: sensorObj }
+                const baseX = (nodeSensors.temperature?.x ?? nodeSensors.humidity?.x) || 0;
+                const baseY = (nodeSensors.temperature?.y ?? nodeSensors.humidity?.y) || 0;
 
-            // Create a container for the temperature and humidity readings
-            const readingsContainer = document.createElement('div');
-            readingsContainer.className = 'heatmap-label';
+                const spacing = 20; // horizontal spacing
 
-            // If no filter is selected, show both temperature and humidity readings side by side in the same box
-            if (dropdown.value === '' || dropdown.value === 'Choose a filter') {
-                const tempReading = document.createElement('div');
-                tempReading.className = 'sensor-reading-box temperature';
-                tempReading.textContent = `${sensor.category === 'temperature' ? sensor.value.toFixed(2) + '°C' : ''}`;
+                // Temperature circle shifted left
+                if (nodeSensors.temperature) {
+                    const { color, radius } = calculateStyle(nodeSensors.temperature.value, 'temperature');
+                    const tempPoint = document.createElement('div');
+                    tempPoint.className = 'heat-point temperature';
+                    tempPoint.style.left = `${baseX - radius / 2 - spacing}px`;
+                    tempPoint.style.top = `${baseY - radius / 2}px`;
+                    tempPoint.style.width = `${radius}px`;
+                    tempPoint.style.height = `${radius}px`;
+                    tempPoint.style.background = color;
+                    heatmapDiv.appendChild(tempPoint);
+                }
 
-                const humidityReading = document.createElement('div');
-                humidityReading.className = 'sensor-reading-box humidity';
-                humidityReading.textContent = `${sensor.category === 'humidity' ? sensor.value.toFixed(2) + '%' : ''}`;
+                // Humidity circle shifted right
+                if (nodeSensors.humidity) {
+                    const { color, radius } = calculateStyle(nodeSensors.humidity.value, 'humidity');
+                    const humPoint = document.createElement('div');
+                    humPoint.className = 'heat-point humidity';
+                    humPoint.style.left = `${baseX - radius / 2 + spacing}px`;
+                    humPoint.style.top = `${baseY - radius / 2}px`;
+                    humPoint.style.width = `${radius}px`;
+                    humPoint.style.height = `${radius}px`;
+                    humPoint.style.background = color;
+                    heatmapDiv.appendChild(humPoint);
+                }
 
-                readingsContainer.appendChild(tempReading);
-                readingsContainer.appendChild(humidityReading);
-            } else {
-                // If a filter is selected, show only the selected category
-                const reading = document.createElement('div');
-                reading.className = `sensor-reading-box ${sensor.category}`;
-                reading.textContent = `${sensor.category === 'temperature' ? sensor.value.toFixed(2) + '°C' : sensor.value.toFixed(2) + '%'}`;
-                readingsContainer.appendChild(reading);
-            }
+                // Combined label above baseX showing both values
+                const label = document.createElement('div');
+                label.className = 'heatmap-label';
+                label.style.left = `${baseX}px`;
+                label.style.top = `${baseY - 40}px`;
 
-            // Position the label just above the sensor point and ensure spacing for side-by-side positioning
-            readingsContainer.style.left = `${sensor.x - radius / 2 + radius / 4}px`;  // Adjusted position for label
-            readingsContainer.style.top = `${sensor.y - radius / 2 - 35}px`;  // Adjusted position above the circle
+                // Temperature box
+                const tempBox = document.createElement('div');
+                tempBox.className = 'sensor-reading-box temperature';
+                tempBox.textContent = nodeSensors.temperature
+                    ? `${nodeSensors.temperature.value.toFixed(2)}°C`
+                    : 'N/A';
 
-            // Append the point and label to the heatmap div
-            heatmapDiv.appendChild(point);
-            heatmapDiv.appendChild(readingsContainer);
-        });
+                // Humidity box
+                const humBox = document.createElement('div');
+                humBox.className = 'sensor-reading-box humidity';
+                humBox.textContent = nodeSensors.humidity
+                    ? `${nodeSensors.humidity.value.toFixed(2)}%`
+                    : 'N/A';
+
+                label.appendChild(tempBox);
+                label.appendChild(humBox);
+                heatmapDiv.appendChild(label);
+            });
+
+        } else {
+            // Filtered by temperature or humidity - only render one circle and label per sensor
+            sensorData.forEach(sensor => {
+                const { color, radius } = calculateStyle(sensor.value, sensor.category);
+                const x = sensor.x || 0;
+                const y = sensor.y || 0;
+
+                const point = document.createElement('div');
+                point.className = `heat-point ${sensor.category}`;
+                point.style.left = `${x - radius / 2}px`;
+                point.style.top = `${y - radius / 2}px`;
+                point.style.width = `${radius}px`;
+                point.style.height = `${radius}px`;
+                point.style.background = color;
+                heatmapDiv.appendChild(point);
+
+                const label = document.createElement('div');
+                label.className = 'heatmap-label';
+                label.style.left = `${x}px`;
+                label.style.top = `${y - 40}px`;
+
+                const readingBox = document.createElement('div');
+                readingBox.className = `sensor-reading-box ${sensor.category}`;
+                readingBox.textContent = sensor.category === 'temperature'
+                    ? `${sensor.value.toFixed(2)}°C`
+                    : `${sensor.value.toFixed(2)}%`;
+
+                label.appendChild(readingBox);
+                heatmapDiv.appendChild(label);
+            });
+        }
     }
 
-    // Event listener for filter dropdown change
+    // On dropdown change, fetch and render accordingly
     dropdown.addEventListener('change', async () => {
         const selected = dropdown.value;
-
-        // If "Choose a filter" is selected, show both temperature and humidity
-        const sensorData = selected === 'Choose a filter' ? await fetchSensorData() : await fetchSensorData(selected);
-        renderHeatmap(sensorData); // re-render with filtered data
+        const sensorData = await fetchSensorData(selected);
+        renderHeatmap(sensorData);
     });
 
-    // On load, fetch and render both temperature and humidity
+    // On page load, fetch all data and render
     window.addEventListener('load', async () => {
-        const sensorData = await fetchSensorData(); // Fetch both temperature and humidity data initially
-        renderHeatmap(sensorData); // render the heatmap with all data initially
+        const sensorData = await fetchSensorData('');
+        renderHeatmap(sensorData);
     });
 
-    // Download button logic for heatmap image
+    // Download heatmap as image
     document.getElementById('downloadBtn').addEventListener('click', () => {
         html2canvas(heatmapDiv).then(canvas => {
             const link = document.createElement('a');
@@ -213,23 +306,61 @@
         });
     });
 
-    // Export Data to Text File
+    // Export data text file for currently displayed sensors
     document.getElementById('exportDataBtn').addEventListener('click', () => {
-        const sensorData = [...heatmapDiv.querySelectorAll('.heat-point')].map(point => {
-            const x = parseFloat(point.style.left) + (parseFloat(point.style.width) / 2);
-            const y = parseFloat(point.style.top) + (parseFloat(point.style.height) / 2);
+        if (!currentSensorData.length) {
+            alert('No sensor data available to export.');
+            return;
+        }
 
-            const reading = point.querySelector('.heatmap-label');
-            const tempReading = reading ? reading.querySelector('.temperature') : null;
-            const humidityReading = reading ? reading.querySelector('.humidity') : null;
+        const filterCategory = dropdown.value;
+        let exportLines = [];
 
-            const tempValue = tempReading ? tempReading.textContent : '';
-            const humidityValue = humidityReading ? humidityReading.textContent : '';
+        if (filterCategory === '') {
+            // Group data by node and category, similar to rendering
+            const latestPerNodeCategory = new Map();
+            currentSensorData.forEach(sensor => {
+                const nodeId = sensor.node_id || sensor.id || sensor.sensor_id || '';
+                if (!nodeId) return;
+                const key = `${nodeId}-${sensor.category}`;
+                if (!latestPerNodeCategory.has(key) || sensor.timestamp > latestPerNodeCategory.get(key).timestamp) {
+                    latestPerNodeCategory.set(key, sensor);
+                }
+            });
 
-            return `Location: (${x.toFixed(2)}, ${y.toFixed(2)}) | Temp: ${tempValue} | Humidity: ${humidityValue}`;
-        });
+            const combinedByNode = new Map();
+            for (const [key, sensor] of latestPerNodeCategory.entries()) {
+                const nodeId = key.split('-')[0];
+                if (!combinedByNode.has(nodeId)) combinedByNode.set(nodeId, {});
+                combinedByNode.get(nodeId)[sensor.category] = sensor;
+            }
 
-        const blob = new Blob([sensorData.join('\n')], { type: 'text/plain' });
+            combinedByNode.forEach((sensors, nodeId) => {
+                const loc = sensors.temperature?.x && sensors.temperature?.y
+                    ? `(${sensors.temperature.x.toFixed(2)}, ${sensors.temperature.y.toFixed(2)})`
+                    : sensors.humidity
+                        ? `(${sensors.humidity.x.toFixed(2)}, ${sensors.humidity.y.toFixed(2)})`
+                        : '(N/A)';
+                const tempVal = sensors.temperature ? sensors.temperature.value.toFixed(2) + '°C' : 'N/A';
+                const humVal = sensors.humidity ? sensors.humidity.value.toFixed(2) + '%' : 'N/A';
+
+                exportLines.push(`Node: ${nodeId} | Location: ${loc} | Temperature: ${tempVal} | Humidity: ${humVal}`);
+            });
+
+        } else {
+            // Filter applied, export currentSensorData directly
+            currentSensorData.forEach(sensor => {
+                const nodeId = sensor.node_id || sensor.id || sensor.sensor_id || '';
+                const loc = sensor.x && sensor.y ? `(${sensor.x.toFixed(2)}, ${sensor.y.toFixed(2)})` : '(N/A)';
+                const val = sensor.category === 'temperature'
+                    ? `${sensor.value.toFixed(2)}°C`
+                    : `${sensor.value.toFixed(2)}%`;
+
+                exportLines.push(`Node: ${nodeId} | Category: ${sensor.category} | Location: ${loc} | Value: ${val}`);
+            });
+        }
+
+        const blob = new Blob([exportLines.join('\n')], { type: 'text/plain' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = 'heatmap_data.txt';
