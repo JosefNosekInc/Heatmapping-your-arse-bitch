@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Heatmap Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet" />
   <style>
     body {
       background: linear-gradient(to bottom right, #f0f4f8, #d9e2ec);
@@ -127,7 +127,10 @@
 <script>
   const dropdown = document.getElementById('filterDropdown');
   const heatmapDiv = document.getElementById('heatmap');
+
   let currentCategory = '';
+  let currentSensorData = [];   // raw fetched data
+  let displayedSensorData = []; // filtered & latest data displayed on heatmap
 
   function calculateStyle(value, category) {
     let color, radius;
@@ -143,16 +146,112 @@
     return { color, radius };
   }
 
+  async function fetchSensorData(category = '') {
+    try {
+      const response = await fetch(`/api/sensors/?category=${category}`);
+      const data = await response.json();
+      currentSensorData = data;  // store raw fetched data globally
+
+      if (!category) {
+        // No filter: show both temperature and humidity latest per node
+
+        const latestDataMap = new Map(); // key = nodeId-category
+
+        data.forEach(sensor => {
+          const id = sensor.node_id || sensor.id || sensor.sensor_id;
+          let cat = sensor.category;
+          if (!cat) {
+            if (sensor.temperature !== undefined) cat = 'temperature';
+            else if (sensor.humidity !== undefined) cat = 'humidity';
+          }
+          if (!cat) return;
+
+          const key = `${id}-${cat}`;
+
+          if (!latestDataMap.has(key)) {
+            latestDataMap.set(key, sensor);
+          } else {
+            if (sensor.timestamp > latestDataMap.get(key).timestamp) {
+              latestDataMap.set(key, sensor);
+            }
+          }
+        });
+
+        return Array.from(latestDataMap.values());
+
+      } else {
+        // Filter selected: show only latest per node for that category
+        const latestDataMap = new Map();
+
+        data.forEach(sensor => {
+          const id = sensor.node_id || sensor.id || sensor.sensor_id;
+          if (!latestDataMap.has(id)) {
+            latestDataMap.set(id, sensor);
+          } else {
+            if (sensor.timestamp > latestDataMap.get(id).timestamp) {
+              latestDataMap.set(id, sensor);
+            }
+          }
+        });
+
+        return Array.from(latestDataMap.values());
+      }
+    } catch (error) {
+      console.error('Error fetching sensor data:', error);
+      currentSensorData = [];
+      return [];
+    }
+  }
+
   function renderHeatmap(sensorData) {
     heatmapDiv.innerHTML = '';
 
+    // Group sensors by node id to find nodes with multiple sensors
+    const sensorsGroupedByNode = sensorData.reduce((acc, sensor) => {
+      const id = sensor.node_id || sensor.id || sensor.sensor_id || 'unknown';
+      if (!acc[id]) acc[id] = [];
+      acc[id].push(sensor);
+      return acc;
+    }, {});
+
     sensorData.forEach(sensor => {
-      const { color, radius } = calculateStyle(sensor.value, sensor.category);
+      let category = sensor.category;
+      let value;
+      if (category) {
+        value = sensor.value !== undefined ? sensor.value :
+                (category === 'temperature' ? sensor.temperature : sensor.humidity);
+      } else {
+        if (sensor.temperature !== undefined) {
+          category = 'temperature';
+          value = sensor.temperature;
+        } else if (sensor.humidity !== undefined) {
+          category = 'humidity';
+          value = sensor.humidity;
+        } else {
+          return;
+        }
+      }
+
+      let x = sensor.x || 0;
+      let y = sensor.y || 0;
+
+      // Apply shift logic if no filter and node has multiple sensors
+      const id = sensor.node_id || sensor.id || sensor.sensor_id || 'unknown';
+      const sensorsAtNode = sensorsGroupedByNode[id] || [];
+      if (!currentCategory && sensorsAtNode.length > 1) {
+        if (category === 'temperature') {
+          y = y - 20; // shift temperature up by 20px
+        } else if (category === 'humidity') {
+          y = y + 20; // shift humidity down by 20px
+        }
+      }
+
+      const { color, radius } = calculateStyle(value, category);
 
       const point = document.createElement('div');
-      point.className = `heat-point ${sensor.category}`;
-      point.style.left = `${sensor.x - radius / 2}px`;
-      point.style.top = `${sensor.y - radius / 2}px`;
+      point.className = `heat-point ${category}`;
+      point.style.left = `${x - radius / 2}px`;
+      point.style.top = `${y - radius / 2}px`;
       point.style.width = `${radius}px`;
       point.style.height = `${radius}px`;
       point.style.background = color;
@@ -161,52 +260,44 @@
       readingsContainer.className = 'heatmap-label';
 
       const reading = document.createElement('div');
-      reading.className = `sensor-reading-box ${sensor.category}`;
-      reading.textContent = sensor.category === 'temperature'
-        ? `${sensor.value.toFixed(2)}°C`
-        : `${sensor.value.toFixed(2)}%`;
+      reading.className = `sensor-reading-box ${category}`;
+      reading.textContent = category === 'temperature'
+        ? `${value.toFixed(2)}°C`
+        : `${value.toFixed(2)}%`;
 
       readingsContainer.appendChild(reading);
-      readingsContainer.style.left = `${sensor.x}px`;
-      readingsContainer.style.top = `${sensor.y - 35}px`;
+      readingsContainer.style.left = `${x}px`;
+      readingsContainer.style.top = `${y - 35}px`;
 
       heatmapDiv.appendChild(point);
       heatmapDiv.appendChild(readingsContainer);
     });
   }
 
-  async function fetchSensorData(category = '') {
-    try {
-      const response = await fetch(`/api/sensors/?category=${category}`);
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching sensor data:', error);
-      return [];
-    }
+  async function updateHeatmap(category = '') {
+    const sensorData = await fetchSensorData(category);
+    displayedSensorData = sensorData; // update global displayed data
+    renderHeatmap(sensorData);
   }
 
   // Initial load
   window.addEventListener('load', async () => {
-  // Restore previous filter from localStorage
-  currentCategory = localStorage.getItem('selectedCategory') || '';
-  dropdown.value = currentCategory || '';
+    currentCategory = localStorage.getItem('selectedCategory') || '';
+    dropdown.value = currentCategory;
+    await updateHeatmap(currentCategory);
+  });
 
-  const sensorData = await fetchSensorData(currentCategory);
-  renderHeatmap(sensorData);
-});
+  // Dropdown change event
+  dropdown.addEventListener('change', async () => {
+    currentCategory = dropdown.value;
+    localStorage.setItem('selectedCategory', currentCategory);
+    await updateHeatmap(currentCategory);
+  });
 
-dropdown.addEventListener('change', async () => {
-  currentCategory = dropdown.value;
-  localStorage.setItem('selectedCategory', currentCategory);  // Save selection
-  const sensorData = await fetchSensorData(currentCategory);
-  renderHeatmap(sensorData);
-});
-
-  // Auto-update every 5 seconds without reloading the page
+  // Auto-update every 20 seconds
   setInterval(async () => {
-    const sensorData = await fetchSensorData(currentCategory);
-    renderHeatmap(sensorData);
-  }, 5000);
+    await updateHeatmap(currentCategory);
+  }, 20000);
 
   // Download heatmap as image
   document.getElementById('downloadBtn').addEventListener('click', () => {
@@ -218,19 +309,20 @@ dropdown.addEventListener('change', async () => {
     });
   });
 
-  // Export current data as JSON
-  document.getElementById('exportDataBtn').addEventListener('click', async () => {
-    try {
-      const sensorData = await fetchSensorData(currentCategory);
-      const jsonData = JSON.stringify(sensorData, null, 2);
-      const blob = new Blob([jsonData], { type: 'application/json' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'sensor_data.json';
-      link.click();
-    } catch (error) {
-      console.error('Error exporting data:', error);
+  // Export currently displayed sensor data as JSON
+  document.getElementById('exportDataBtn').addEventListener('click', () => {
+    if (!displayedSensorData || displayedSensorData.length === 0) {
+      alert('No sensor data available to export.');
+      return;
     }
+
+    const jsonData = JSON.stringify(displayedSensorData, null, 2);
+    const blob = new Blob([jsonData], { type: 'application/json' });
+
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `exported_sensor_data_${currentCategory || 'all'}.json`;
+    link.click();
   });
 </script>
 
