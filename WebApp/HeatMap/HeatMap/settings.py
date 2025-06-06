@@ -23,12 +23,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-hzrzn&^*zda-sdvbu2!+$9_&x758plw&k9n4f66&ne034k#=*x'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = ['172.20.10.2', 'localhost', '127.0.0.1']
-
-CORS_ALLOW_ALL_ORIGINS = True
-
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -40,9 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'Project',
-    'corsheaders',
-    ]
+    'Project', ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -52,7 +47,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = 'HeatMap.urls'
