@@ -1,6 +1,6 @@
 #include <esp_now.h>
 #include <WiFi.h>
-#include "esp_wifi.h"     // Required for esp_wifi_set_channel()
+#include "esp_wifi.h"
 #include "DHT.h"
 
 #define NODE_ID 2
@@ -17,49 +17,44 @@ typedef struct struct_message {
 
 struct_message data;
 
-// ⚠ Replace with the *actual MAC address of your receiver*
-uint8_t receiverMAC[] = { 0x14, 0x33, 0x5C, 0x03, 0xD3, 0x6C };
-
+// Master MAC address (replace with your master MAC)
+uint8_t receiverMAC[] = { 0xEC, 0xE3, 0x34, 0xDB, 0xC0, 0xCC };
 
 void setup() {
   Serial.begin(115200);
   dht.begin();
 
-  // Set WiFi to station mode & channel
+  // Set Wi-Fi mode and sync to channel 6
   WiFi.mode(WIFI_STA);
-  esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);  // Ensure both ESPs are on channel 1
+  esp_wifi_set_promiscuous(true);
+  esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);  // Master’s Wi-Fi channel
+  esp_wifi_set_promiscuous(false);
 
-  // Init ESP-NOW
+  Serial.println("📡 ESP-NOW Slave Starting on Channel 6");
+
   if (esp_now_init() != ESP_OK) {
     Serial.println("❌ ESP-NOW init failed");
     return;
   }
-  Serial.println("✅ ESP-NOW Initialized");
 
-  // Register peer (the receiver)
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, receiverMAC, 6);
-  peerInfo.channel = 0; // Use current channel
+  peerInfo.channel = 6;  // Must match master's Wi-Fi channel
   peerInfo.encrypt = false;
 
   if (!esp_now_is_peer_exist(receiverMAC)) {
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
       Serial.println("❌ Failed to add peer");
       return;
-    } else {
-      Serial.println("✅ Peer added successfully");
     }
-  } else {
-    Serial.println("ℹ Peer already exists");
   }
 
-  // Register send callback
-  esp_now_register_send_cb([](const uint8_t *mac, esp_now_send_status_t status) {
+  esp_now_register_send_cb([](const uint8_t *mac_addr, esp_now_send_status_t status) {
     Serial.print("📤 Send Status: ");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "✅ Success" : "❌ Fail");
   });
 
-  Serial.println("📡 Sender Ready");
+  Serial.println("✅ ESP-NOW ready to send data");
 }
 
 void loop() {
@@ -71,17 +66,16 @@ void loop() {
     data.temperature = temp;
     data.humidity = hum;
 
-    Serial.printf("[%lu ms] Node %d -> Temp: %.1f°C, Hum: %.1f%%\n",
-                  millis(), NODE_ID, temp, hum);
-
     esp_err_t result = esp_now_send(receiverMAC, (uint8_t *)&data, sizeof(data));
 
+    Serial.printf("📦 Sending: Node %d -> Temp: %.1f°C, Hum: %.1f%%\n", NODE_ID, temp, hum);
+
     if (result != ESP_OK) {
-      Serial.println("❌ esp_now_send() returned error");
+      Serial.println("❌ Error sending ESP-NOW data");
     }
   } else {
-    Serial.println("⚠ Sensor read failed (NaN)");
+    Serial.println("⚠️ Sensor read failed");
   }
 
-  delay(5000); // Send data every 5 seconds
+  delay(2000);
 }
