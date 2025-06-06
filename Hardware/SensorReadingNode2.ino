@@ -1,81 +1,110 @@
 #include <esp_now.h>
 #include <WiFi.h>
-#include "esp_wifi.h"
-#include "DHT.h"
+#include <HTTPClient.h>
 
-#define NODE_ID 2
-#define DHTPIN 15
-#define DHTTYPE DHT22
+// Wi-Fi credentials
+const char* ssid = "iPhone";       
+const char* password = "bestofmeaa";   
 
-DHT dht(DHTPIN, DHTTYPE);
+// Server endpoint
+const char* serverUrl = "http://172.20.2.2:8000/api/receive_sensor_data/";
 
+// Structure matching ESP-NOW message format
 typedef struct struct_message {
   uint8_t node_id;
   float temperature;
   float humidity;
 } struct_message;
 
-struct_message data;
+struct_message incomingData;
 
-// Master MAC address (replace with your master MAC)
-uint8_t receiverMAC[] = { 0xEC, 0xE3, 0x34, 0xDB, 0xC0, 0xCC };
+void sendToServer() {
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("📡 Wi-Fi connected, sending data to server...");
+
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/json");
+
+    String jsonPayload = "{";
+    jsonPayload += "\"node_id\":" + String(incomingData.node_id) + ",";
+    jsonPayload += "\"temperature\":" + String(incomingData.temperature, 1) + ",";
+    jsonPayload += "\"humidity\":" + String(incomingData.humidity, 1);
+    jsonPayload += "}";
+
+    int httpResponseCode = http.POST(jsonPayload);
+
+    if (httpResponseCode > 0) {
+      String response = http.getString();
+      Serial.printf("✅ Data sent! HTTP response code: %d\n", httpResponseCode);
+      Serial.println("🗒️ Server response: " + response);
+    } else {
+      Serial.printf("❌ Failed to send POST. Error: %s\n", http.errorToString(httpResponseCode).c_str());
+    }
+
+    http.end();
+  } else {
+    Serial.println("🚫 Wi-Fi not connected. Cannot send data.");
+  }
+}
+
+void onReceive(const esp_now_recv_info_t *info, const uint8_t *incomingDataBytes, int len) {
+  if (len == sizeof(incomingData)) {
+    memcpy(&incomingData, incomingDataBytes, sizeof(incomingData));
+
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+             info->src_addr[0], info->src_addr[1], info->src_addr[2],
+             info->src_addr[3], info->src_addr[4], info->src_addr[5]);
+
+    Serial.println("📥 ESP-NOW Packet Received:");
+    Serial.printf("🔹 From MAC: %s\n", macStr);
+    Serial.printf("🔸 Node ID: %d\n", incomingData.node_id);
+    Serial.printf("🌡️ Temp: %.1f°C | 💧 Humidity: %.1f%%\n", incomingData.temperature, incomingData.humidity);
+
+    sendToServer();
+  } else {
+    Serial.printf("⚠️ Unexpected data length: %d bytes\n", len);
+  }
+}
 
 void setup() {
   Serial.begin(115200);
-  dht.begin();
+  delay(1000);
+  Serial.println("\n🔧 Booting ESP-NOW Master...");
 
-  // Set Wi-Fi mode and sync to channel 6
   WiFi.mode(WIFI_STA);
-  esp_wifi_set_promiscuous(true);
-  esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);  // Master’s Wi-Fi channel
-  esp_wifi_set_promiscuous(false);
+  WiFi.begin(ssid, password);
+  Serial.print("🔌 Connecting to Wi-Fi");
 
-  Serial.println("📡 ESP-NOW Slave Starting on Channel 6");
+  unsigned long startAttemptTime = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n✅ Wi-Fi Connected!");
+    Serial.print("🌐 IP Address: ");
+    Serial.println(WiFi.localIP());
+
+    wifi_second_chan_t second;
+    uint8_t current_channel = WiFi.channel(&second);
+    Serial.printf("📡 Master is using Wi-Fi channel: %d\n", current_channel);
+
+  } else {
+    Serial.println("\n🚫 Failed to connect to Wi-Fi within timeout.");
+  }
 
   if (esp_now_init() != ESP_OK) {
-    Serial.println("❌ ESP-NOW init failed");
+    Serial.println("❌ ESP-NOW initialization failed.");
     return;
   }
 
-  esp_now_peer_info_t peerInfo = {};
-  memcpy(peerInfo.peer_addr, receiverMAC, 6);
-  peerInfo.channel = 6;  // Must match master's Wi-Fi channel
-  peerInfo.encrypt = false;
-
-  if (!esp_now_is_peer_exist(receiverMAC)) {
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-      Serial.println("❌ Failed to add peer");
-      return;
-    }
-  }
-
-  esp_now_register_send_cb([](const uint8_t *mac_addr, esp_now_send_status_t status) {
-    Serial.print("📤 Send Status: ");
-    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "✅ Success" : "❌ Fail");
-  });
-
-  Serial.println("✅ ESP-NOW ready to send data");
+  Serial.println("📶 ESP-NOW Initialized. Waiting for data...");
+  esp_now_register_recv_cb(onReceive);
 }
 
 void loop() {
-  float temp = dht.readTemperature();
-  float hum = dht.readHumidity();
-
-  if (!isnan(temp) && !isnan(hum)) {
-    data.node_id = NODE_ID;
-    data.temperature = temp;
-    data.humidity = hum;
-
-    esp_err_t result = esp_now_send(receiverMAC, (uint8_t *)&data, sizeof(data));
-
-    Serial.printf("📦 Sending: Node %d -> Temp: %.1f°C, Hum: %.1f%%\n", NODE_ID, temp, hum);
-
-    if (result != ESP_OK) {
-      Serial.println("❌ Error sending ESP-NOW data");
-    }
-  } else {
-    Serial.println("⚠️ Sensor read failed");
-  }
-
-  delay(2000);
+  
 }
