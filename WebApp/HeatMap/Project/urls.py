@@ -1,14 +1,12 @@
 from django.urls import path
-from . import views
-from .views import ping_view
-from .views import view_data_file
+from .views import index, receive_sensor_data, get_sensor_data, ping_view, view_data_file, dashboard
 
 urlpatterns = [
-    path('', views.index, name='index'),
-    path('api/sensor_data/', views.get_sensor_data, name='get_sensor_data'),
-    path('api/sensors/', views.get_sensor_data),
-    path('api/receive_sensor_data/', views.receive_sensor_data, name='receive_sensor_data'),
-    path('api/ping/', ping_view, name='ping'),  
-    path('view-data/', view_data_file),
-    path('api/data/', views.receive_sensor_data, name='receive_sensor_data'),
+    path('', index, name='index'),
+    path('api/receive_sensor_data/', receive_sensor_data, name='receive_sensor_data'),
+    path('api/sensors/', get_sensor_data, name='get_sensor_data'),
+    path('api/ping/', ping_view, name='ping_view'),
+    path('api/view_data_file/', view_data_file, name='view_data_file'),
+    path('dashboard/', dashboard, name='dashboard'),
+    
 ]
